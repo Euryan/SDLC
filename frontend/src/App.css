@@ -1,0 +1,47 @@
+.App {
+  font-family: "Nunito", sans-serif;
+}
+
+.font-fredoka {
+  font-family: "Fredoka", sans-serif;
+}
+
+.font-nunito {
+  font-family: "Nunito", sans-serif;
+}
+
+.font-caveat {
+  font-family: "Caveat", cursive;
+}
+
+/* Entrance & micro animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn { animation: fadeIn 0.18s ease-out; }
+
+@keyframes stageIn {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-stageIn { animation: stageIn 0.4s ease-out; }
+
+@keyframes characterIn {
+  from { opacity: 0; transform: translate(-50%, 24px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.animate-characterIn { animation: characterIn 0.55s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.6) rotate(-6deg); }
+  60% { transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.animate-popIn { animation: popIn 0.6s ease-out 0.15s both; }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-floaty { animation: floaty 3.5s ease-in-out infinite; }
