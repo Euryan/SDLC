@@ -35,17 +35,27 @@ const drawConnections = (context, landmarks, connections, width, height, color) 
   });
 };
 
-const MediaPipeBodyEstimation = ({ onWave }) => {
+const MediaPipeBodyEstimation = ({ onWave, onFocusLost, onFocusDetected }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const onWaveRef = useRef(onWave);
   const motionHistoryRef = useRef([]);
   const lastWaveAtRef = useRef(0);
+  const lastDetectedAtRef = useRef(performance.now());
+  const focusReminderAtRef = useRef(0);
+  const focusLostRef = useRef(false);
+  const onFocusLostRef = useRef(onFocusLost);
+  const onFocusDetectedRef = useRef(onFocusDetected);
   const [status, setStatus] = useState("Memulai kamera...");
 
   useEffect(() => {
     onWaveRef.current = onWave;
   }, [onWave]);
+
+  useEffect(() => {
+    onFocusLostRef.current = onFocusLost;
+    onFocusDetectedRef.current = onFocusDetected;
+  }, [onFocusLost, onFocusDetected]);
 
   useEffect(() => {
     let disposed = false;
@@ -82,7 +92,32 @@ const MediaPipeBodyEstimation = ({ onWave }) => {
       }
     };
 
-    const drawResults = (hands, pose) => {
+    const detectFocus = (hands, pose, timestamp) => {
+      const detected = Boolean(pose?.landmarks?.length || hands?.landmarks?.length);
+      if (detected) {
+        lastDetectedAtRef.current = timestamp;
+        focusReminderAtRef.current = 0;
+        if (focusLostRef.current) {
+          focusLostRef.current = false;
+          onFocusDetectedRef.current?.();
+        }
+        return;
+      }
+
+      if (timestamp - lastDetectedAtRef.current < 2000) return;
+      if (!focusLostRef.current) {
+        focusLostRef.current = true;
+        focusReminderAtRef.current = timestamp;
+        onFocusLostRef.current?.();
+        return;
+      }
+      if (timestamp - focusReminderAtRef.current >= 3000) {
+        focusReminderAtRef.current = timestamp;
+        onFocusLostRef.current?.();
+      }
+    };
+
+    const drawResults = (hands, pose, timestamp) => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (!video || !canvas) return;
@@ -103,6 +138,7 @@ const MediaPipeBodyEstimation = ({ onWave }) => {
         drawConnections(context, landmarks, HAND_CONNECTIONS, width, height, "#ffcf5c");
         landmarks.forEach((point) => drawPoint(context, point, width, height, "#fff8dc", 2.5));
       });
+      detectFocus(hands, pose, timestamp);
       detectWave(hands?.landmarks, performance.now());
     };
 
@@ -136,7 +172,7 @@ const MediaPipeBodyEstimation = ({ onWave }) => {
             const timestamp = performance.now();
             const hands = handLandmarker.detectForVideo(video, timestamp);
             const pose = poseLandmarker.detectForVideo(video, timestamp);
-            drawResults(hands, pose);
+            drawResults(hands, pose, timestamp);
             lastVideoTime = video.currentTime;
           }
           animationFrame = requestAnimationFrame(detect);

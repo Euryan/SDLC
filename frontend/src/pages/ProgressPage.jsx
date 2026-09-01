@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 import {
   AreaChart,
   Area,
@@ -36,10 +37,11 @@ import { Download } from "lucide-react";
 const BAR_COLORS = ["#6fcccb", "#f6b93b", "#eb8f8f", "#8fce9a"];
 
 const EMPTY_PROGRESS = {
-  stats: { totalMateri: 0, selesai: 0, rataNilai: 0, streak: 0 },
+  stats: { totalMateri: 0, selesai: 0, moduleSelesai: 0, subModuleSelesai: 0, rataNilai: 0, streak: 0 },
   weekly: [],
   categoryScores: [],
   focusLevel: 0,
+  screening: null,
   completedMaterials: [],
   ai: {
     focusScore: 0,
@@ -79,22 +81,56 @@ const ProgressPage = () => {
   const { child } = useChild();
   const { token } = useAuth();
   const [progress, setProgress] = useState(EMPTY_PROGRESS);
+  const [range, setRange] = useState("7d");
+  const [progressError, setProgressError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const lineChartRef = useRef(null);
+  const focusChartRef = useRef(null);
   const { stats, weekly, categoryScores, completedMaterials, ai } = progress;
+  const completedByChapter = completedMaterials.reduce((groups, material) => {
+    const chapterName = material.chapter || "Chapter tanpa nama";
+    if (!groups[chapterName]) groups[chapterName] = [];
+    groups[chapterName].push(material);
+    return groups;
+  }, {});
 
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/progress`, authConfig(token))
+    setProgressError("");
+    fetch(`${API}/progress?range=${range}`, authConfig(token))
       .then((response) => {
         if (!response.ok) throw new Error("Gagal memuat progress");
         return response.json();
       })
       .then((data) => setProgress((current) => ({ ...current, ...data, ai: { ...current.ai, ...(data.ai || {}) } })))
+      .catch(() => setProgressError("Data grafik belum dapat dimuat."));
+  }, [token, range]);
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API}/screening/summary`, authConfig(token))
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((screening) => setProgress((current) => ({ ...current, screening })))
       .catch(() => {});
   }, [token]);
-  const focusData = [{ name: "fokus", value: ai.focusScore, fill: "#6fcccb" }];
+  const focusScore = progress.focusLevel ?? 0;
+  const focusData = [{ name: "fokus", value: focusScore, fill: "#6fcccb" }];
+  const focusLabel = focusScore >= 80 ? "Fokus baik" : focusScore >= 50 ? "Fokus perlu ditingkatkan" : "Sering kehilangan fokus";
 
-  const handleDownload = () => {
-    generateProgressReport(child, progress);
+  const handleDownload = async () => {
+    setDownloadError("");
+    const chartImages = {};
+    try {
+      if (lineChartRef.current) chartImages.line = (await html2canvas(lineChartRef.current, { backgroundColor: "#ffffff", scale: 2 })).toDataURL("image/png");
+      if (focusChartRef.current) chartImages.focus = (await html2canvas(focusChartRef.current, { backgroundColor: "#ffffff", scale: 2 })).toDataURL("image/png");
+    } catch {
+      // Generate the report even if a browser cannot capture SVG charts.
+    }
+    try {
+      await generateProgressReport(child, progress, chartImages);
+    } catch {
+      setDownloadError("Laporan belum dapat diunduh. Silakan coba lagi.");
+    }
   };
 
   return (
@@ -118,12 +154,15 @@ const ProgressPage = () => {
           >
             <Download size={17} /> Unduh Laporan PDF
           </button>
+          {downloadError && <p className="absolute right-5 top-full mt-2 font-nunito text-xs text-[#eb5757]">{downloadError}</p>}
         </div>
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={BookOpen} label="Total Materi" value={stats.totalMateri} tint={{ bg: "#e2f3f3", fg: "#3aa0a0" }} />
           <StatCard icon={CheckCircle2} label="Materi Selesai" value={stats.selesai} tint={{ bg: "#e3f6e8", fg: "#3ea45f" }} />
+          <StatCard icon={BookOpen} label="Module Selesai" value={progress.moduleSelesai || 0} tint={{ bg: "#eaf0ff", fg: "#5875c7" }} />
+          <StatCard icon={CheckCircle2} label="Sub Module Selesai" value={progress.subModuleSelesai || 0} tint={{ bg: "#f2eaff", fg: "#9166bd" }} />
           <StatCard icon={Star} label="Rata-rata Nilai" value={stats.rataNilai} tint={{ bg: "#fff2d6", fg: "#e0a020" }} />
           <StatCard icon={Flame} label="Hari Streak" value={stats.streak} tint={{ bg: "#ffe6da", fg: "#ff7a3d" }} />
         </div>
@@ -131,8 +170,23 @@ const ProgressPage = () => {
         {/* Charts row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Learning trend */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-[0_10px_28px_-18px_rgba(80,140,150,0.7)]">
-            <SectionTitle>Grafik Pembelajaran</SectionTitle>
+          <div ref={lineChartRef} className="lg:col-span-2 bg-white rounded-2xl p-5 shadow-[0_10px_28px_-18px_rgba(80,140,150,0.7)]">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <SectionTitle>Grafik Pembelajaran</SectionTitle>
+              <div className="flex items-center gap-1 rounded-lg bg-[#edf6f6] p-1" role="group" aria-label="Rentang grafik">
+                {[{ id: "7d", label: "7 Hari" }, { id: "1m", label: "1 Bulan" }, { id: "1y", label: "1 Tahun" }].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setRange(option.id)}
+                    className={`rounded-md px-3 py-1.5 font-nunito text-xs font-bold transition-colors ${range === option.id ? "bg-white text-[#2c7d7d] shadow-sm" : "text-[#719095] hover:text-[#2c7d7d]"}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {progressError && <p className="mb-2 font-nunito text-xs text-[#eb5757]">{progressError}</p>}
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={weekly} margin={{ top: 10, right: 10, left: -18, bottom: 0 }}>
                 <defs>
@@ -146,21 +200,21 @@ const ProgressPage = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#eef2f2" vertical={false} />
-                <XAxis dataKey="week" tick={{ fontSize: 12, fill: "#8aa0a3" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: "#8aa0a3" }} axisLine={false} tickLine={false} domain={[0, 100]} />
+                <XAxis dataKey="week" interval={range === "1m" ? 2 : 0} tick={{ fontSize: 12, fill: "#8aa0a3" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: "#8aa0a3" }} axisLine={false} tickLine={false} domain={[0, "auto"]} allowDecimals={false} />
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2ebec", fontFamily: "Nunito" }} />
-                <Area type="monotone" dataKey="fokus" name="Fokus (%)" stroke="#4fb3b2" strokeWidth={3} fill="url(#gFokus)" />
-                <Area type="monotone" dataKey="penyelesaian" name="Penyelesaian (%)" stroke="#e0a020" strokeWidth={3} fill="url(#gSelesai)" />
+                <Area type="monotone" dataKey="fokus" name="Kehilangan fokus" stroke="#4fb3b2" strokeWidth={3} fill="url(#gFokus)" />
+                <Area type="monotone" dataKey="penyelesaian" name="Module selesai" stroke="#e0a020" strokeWidth={3} fill="url(#gSelesai)" />
               </AreaChart>
             </ResponsiveContainer>
             <div className="flex items-center gap-5 mt-2 px-1">
-              <span className="flex items-center gap-2 font-nunito text-[12px] text-[#5c777c]"><span className="h-3 w-3 rounded-full bg-[#4fb3b2]" /> Fokus</span>
-              <span className="flex items-center gap-2 font-nunito text-[12px] text-[#5c777c]"><span className="h-3 w-3 rounded-full bg-[#e0a020]" /> Penyelesaian</span>
+              <span className="flex items-center gap-2 font-nunito text-[12px] text-[#5c777c]"><span className="h-3 w-3 rounded-full bg-[#4fb3b2]" /> Kehilangan fokus</span>
+              <span className="flex items-center gap-2 font-nunito text-[12px] text-[#5c777c]"><span className="h-3 w-3 rounded-full bg-[#e0a020]" /> Module selesai</span>
             </div>
           </div>
 
           {/* Focus ring */}
-          <div className="bg-white rounded-2xl p-5 shadow-[0_10px_28px_-18px_rgba(80,140,150,0.7)] flex flex-col">
+          <div ref={focusChartRef} className="bg-white rounded-2xl p-5 shadow-[0_10px_28px_-18px_rgba(80,140,150,0.7)] flex flex-col">
             <SectionTitle>Tingkat Fokus</SectionTitle>
             <div className="relative flex-1 flex items-center justify-center">
               <ResponsiveContainer width="100%" height={200}>
@@ -170,12 +224,12 @@ const ProgressPage = () => {
                 </RadialBarChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="font-fredoka font-bold text-[34px] text-[#2c5f66]">{ai.focusScore}%</span>
+                <span className="font-fredoka font-bold text-[34px] text-[#2c5f66]">{focusScore}%</span>
                 <span className="font-nunito text-[12px] text-[#8aa0a3]">Fokus rata-rata</span>
               </div>
             </div>
             <p className="font-nunito text-[12px] text-center text-[#4c9a9a] font-semibold mt-1">
-              {ai.focusLabel}
+              {focusLabel}
             </p>
           </div>
         </div>
@@ -266,19 +320,32 @@ const ProgressPage = () => {
         {/* Completed materials */}
         <div className="bg-white rounded-2xl p-5 shadow-[0_10px_28px_-18px_rgba(80,140,150,0.7)]">
           <SectionTitle>Materi yang Diselesaikan</SectionTitle>
-          <div className="divide-y divide-[#f0f4f4]">
-            {completedMaterials.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 py-3">
-                <CheckCircle2 size={20} className="text-[#3ea45f] shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-nunito font-bold text-[14px] text-[#2c4f63] truncate">{m.title}</div>
-                  <div className="font-nunito text-[12px] text-[#8aa0a3]">{m.category} • {m.date}</div>
+          <div className="space-y-2">
+            {Object.entries(completedByChapter).map(([chapterName, materials]) => (
+              <details key={chapterName} className="group rounded-xl border border-[#e1eeee] bg-[#fbfdfd]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-nunito font-extrabold text-[14px] text-[#2c4f63]">
+                  <span>{chapterName}</span>
+                  <span className="shrink-0 rounded-full bg-[#eafafa] px-3 py-1 text-[12px] text-[#3aa0a0]">
+                    {materials.length} module
+                  </span>
+                </summary>
+                <div className="border-t border-[#e1eeee] px-4">
+                  {materials.map((material) => (
+                    <div key={material.id} className="flex items-center gap-3 border-b border-[#f0f4f4] py-3 last:border-b-0">
+                      <CheckCircle2 size={20} className="shrink-0 text-[#3ea45f]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-nunito text-[14px] font-bold text-[#2c4f63]">{material.title}</div>
+                        <div className="font-nunito text-[12px] text-[#8aa0a3]">{material.course || "Course"} • {material.date}</div>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-[#eafafa] px-3 py-1 font-nunito text-[13px] font-bold text-[#3aa0a0]">Selesai</div>
+                    </div>
+                  ))}
                 </div>
-                <div className="shrink-0 px-3 py-1 rounded-full bg-[#eafafa] font-nunito font-bold text-[13px] text-[#3aa0a0]">
-                  {m.score}
-                </div>
-              </div>
+              </details>
             ))}
+            {!completedMaterials.length && (
+              <p className="py-3 font-nunito text-sm text-[#8aa0a3]">Belum ada materi yang diselesaikan.</p>
+            )}
           </div>
         </div>
       </main>

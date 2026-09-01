@@ -1,7 +1,20 @@
 import { jsPDF } from "jspdf";
+import logoImage from "../assets/logo.png";
+
+const imageToDataUrl = async (source) => {
+  const response = await fetch(source);
+  if (!response.ok) throw new Error("Logo tidak dapat dimuat");
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
 
 // Generates a clean, structured PDF report of a child's learning progress.
-export function generateProgressReport(child, progress) {
+export async function generateProgressReport(child, progress, chartImages = {}) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 40;
@@ -10,17 +23,21 @@ export function generateProgressReport(child, progress) {
   const teal = [111, 204, 203];
   const dark = [44, 79, 99];
   const gray = [120, 140, 145];
+  const logoDataUrl = await imageToDataUrl(logoImage).catch(() => null);
 
-  // Header band
-  doc.setFillColor(teal[0], teal[1], teal[2]);
-  doc.rect(0, 0, pageW, 90, "F");
+// Header band
+doc.setFillColor(teal[0], teal[1], teal[2]);
+doc.rect(0, 0, pageW, 90, "F");
+doc.setFillColor(255, 255, 255);
+doc.roundedRect(margin, 15, 150, 58, 6, 6, "F");
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, "PNG", margin + 8, 21, 134, 46);
+    } catch {
+      // Keep the report downloadable when the optional logo cannot be embedded.
+    }
+  }
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text("AUTIGAZE", margin, 42);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text("EMPATHY IN MOTION", margin, 58);
   doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
   doc.text("Laporan Perkembangan Anak", pageW - margin, 42, { align: "right" });
@@ -88,7 +105,6 @@ export function generateProgressReport(child, progress) {
   line("Usia", `${child.age} tahun`);
   line("Diagnosa", child.diagnosis);
   line("Sekolah / Kelas", `${child.school} - ${child.grade}`);
-  line("Terapis", child.therapist);
   y += 6;
 
   // Summary stats
@@ -98,12 +114,44 @@ export function generateProgressReport(child, progress) {
   line("Rata-rata Nilai", progress.stats.rataNilai);
   line("Hari Streak", progress.stats.streak);
   line("Tingkat Fokus", `${progress.focusLevel}%`);
+  if (progress.screening?.confidence) {
+    line("Hasil Screening", `${progress.screening.level} (Confidence ${progress.screening.confidence}%)`);
+    paragraph(progress.screening.message || "Membutuhkan analisis lanjutan");
+  }
   y += 6;
 
   // Category scores
   sectionTitle("Nilai per Kategori");
   progress.categoryScores.forEach((c) => line(c.name, c.nilai));
   y += 6;
+
+  if (chartImages.line || chartImages.focus) {
+    if (y > 610) {
+      doc.addPage();
+      y = 60;
+    }
+    sectionTitle("Grafik Pembelajaran");
+      const chartGap = 12;
+
+      // total lebar halaman yang tersedia
+      const totalWidth = pageW - margin * 2 - chartGap - 12;
+
+      // tentukan proporsi masing-masing chart
+      const lineChartWidth = totalWidth * 0.6;   // chart garis lebih panjang (60%)
+      const focusChartWidth = totalWidth * 0.4;  // chart focus lebih pendek (40%)
+
+      const chartHeight = 142;
+
+      try {
+        if (chartImages.line) doc.addImage(chartImages.line, "PNG", margin + 6, y, lineChartWidth, chartHeight);
+        if (chartImages.focus) doc.addImage(chartImages.focus, "PNG", margin + 6 + lineChartWidth + chartGap, y, focusChartWidth, chartHeight);
+      } catch {
+        // Keep the text report available if a browser cannot embed an SVG capture.
+      }
+
+      y += chartHeight + 12;
+
+  }
 
   // AI Analysis
   sectionTitle("Analisis AI - Fokus & Perkembangan");
@@ -139,12 +187,14 @@ export function generateProgressReport(child, progress) {
   // Footer note
   doc.setFont("helvetica", "italic");
   doc.setFontSize(8);
-  doc.setTextColor(150, 165, 168);
+  doc.setTextColor(255, 255, 255);
   doc.text(
     "\u00a9 2026 AutiGaze Eureka - Laporan ini dibuat otomatis sebagai gambaran perkembangan.",
     margin,
     doc.internal.pageSize.getHeight() - 24
   );
 
-  doc.save(`Laporan_${child.nickname}_AutiGaze.pdf`);
+  const printedAt = new Date();
+  const dateSuffix = `${String(printedAt.getDate()).padStart(2, "0")}${String(printedAt.getMonth() + 1).padStart(2, "0")}${String(printedAt.getFullYear()).slice(-2)}`;
+  doc.save(`Laporan_${child.nickname}_AutiGaze-${dateSuffix}.pdf`);
 }

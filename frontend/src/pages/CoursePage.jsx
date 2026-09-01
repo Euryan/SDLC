@@ -13,11 +13,13 @@ const CourseCard = ({ course, onClick }) => (
     className="group relative flex-1 min-w-0 rounded-xl overflow-hidden bg-white ring-1 ring-[#e7eef0] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-left"
   >
     <div className="aspect-[16/10] overflow-hidden">
-      <img
-        src={course.image}
-        alt={course.title}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-      />
+      {course.image ? (
+        <img
+          src={course.image}
+          alt={course.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        />
+      ) : <div className="h-full w-full bg-[#edf3f3]" aria-label="Gambar belum tersedia" />}
     </div>
     <div className="absolute bottom-0 left-0 right-0 bg-[#6fcccb]/90 backdrop-blur-sm px-3 py-2">
       <span className="font-nunito italic font-bold text-white text-[13px] leading-tight line-clamp-2 drop-shadow">
@@ -66,7 +68,7 @@ const CategoryRow = ({ category }) => {
             <CourseCard
               key={`${category.id}-${c.id}-${i}`}
               course={c}
-              onClick={() => navigate(`/course/${category.id}/${c.id}`)}
+              onClick={() => navigate(`/lesson/${category.id}/${c.id}`)}
             />
           ))}
         </div>

@@ -1,4 +1,9 @@
 import idle from "./mixamo/Idle.fbx";
+import baru from "./mixamo/animations/female_locomotion_pack/coba.fbx"; 
+import bapak from "./mixamo/animations/female_locomotion_pack/bapak.fbx"; 
+// import baru2 from "./mixamo/animations/female_locomotion_pack/coba.fbx";
+import idol from "./mixamo/animations/female_locomotion_pack/idolu.fbx";
+import peace from "./mixamo/animations/female_locomotion_pack/bisa.fbx";
 import greeting from "./mixamo/animations/female_locomotion_pack/Greeting.fbx";       
 import talking from "./mixamo/Talking.fbx";
 import thinking from "./mixamo/Thinking.fbx";
@@ -25,7 +30,12 @@ import vrma06 from "./mixamo/animations/VRMA_06.vrma";
 import vrma07 from "./mixamo/animations/VRMA_07.vrma";
 
 export const MOTORIK_ANIMATIONS = [
+
   { id: "idle", label: "Idle", url: idle },
+  { id: "bapak", label: "bapak", url: idle },
+  { id: "baru", label: "Baru", url: baru },
+  { id: "idol", label: "Idol", url: idol },
+  { id: "peace", label: "Peace", url: peace },
   { id: "greeting", label: "Greeting", url: greeting },
   { id: "talking", label: "Talking", url: talking },
   { id: "thinking", label: "Thinking", url: thinking },

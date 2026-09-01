@@ -37,16 +37,18 @@ const CategoryPage = () => {
             {courses.map((course) => (
               <button
                 key={course.id}
-                onClick={() => navigate(`/course/${category.id}/${course.id}`)}
+                onClick={() => navigate(`/lesson/${category.id}/${course.id}`)}
                 className="group text-left"
               >
                 <div className="rounded-xl overflow-hidden ring-1 ring-[#e4edee] shadow-sm group-hover:shadow-lg group-hover:-translate-y-1 transition-all duration-300">
                   <div className="aspect-[16/10] overflow-hidden bg-[#f2f6f7]">
-                    <img
-                      src={course.image}
-                      alt={course.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                    {course.image ? (
+                      <img
+                        src={course.image}
+                        alt={course.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : <div className="h-full w-full bg-[#edf3f3]" aria-label="Gambar belum tersedia" />}
                   </div>
                 </div>
                 <h3 className="mt-2 font-nunito italic font-extrabold text-[15px] text-[#2c4f63] leading-snug">

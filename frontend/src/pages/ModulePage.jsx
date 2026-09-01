@@ -80,11 +80,11 @@ const ModulePage = () => {
               Pilih materi bergambar dan video, lalu lanjutkan belajar bersama karakter AutiGaze.
             </p>
           </div>
-          <img
+          {course.image && <img
             src={course.image}
             alt=""
             className="absolute -right-8 -bottom-10 h-44 w-56 rotate-3 rounded-2xl object-cover opacity-35 md:h-56 md:w-72"
-          />
+          />}
         </header>
 
         <div className="mt-8 flex items-end justify-between gap-4">
@@ -112,18 +112,19 @@ const ModulePage = () => {
                   <article key={module.id} className="overflow-hidden rounded-2xl border border-[#e1eeee] bg-[#fbfdfd]">
                     <div className="grid grid-cols-2 gap-2 bg-[#edf8f7] p-2">
                       <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[#dceeed]">
-                        {module.contentType === "image" && module.mediaUrl ? <img src={module.mediaUrl} alt={`Gambar ${module.name}`} className="h-full w-full object-cover" /> : <img src={course.image} alt={`Gambar ${module.name}`} className="h-full w-full object-cover" />}
+                        {module.contentType === "image" && module.mediaUrl ? <img src={module.mediaUrl} alt={`Gambar ${module.name}`} className="h-full w-full object-cover" /> : course.image ? <img src={course.image} alt={`Gambar ${module.name}`} className="h-full w-full object-cover" /> : <div className="h-full w-full bg-[#edf3f3]" aria-label="Gambar belum tersedia" />}
                         <span className="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-1 font-nunito text-[10px] font-extrabold text-[#3aa0a0]">GAMBAR</span>
                       </div>
                       <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[#dceeed]">
-                        <video src={module.contentType === "video" && module.mediaUrl ? module.mediaUrl : ASSETS.eyeVideo} controls preload="metadata" className="h-full w-full object-cover" aria-label={`Video ${module.name}`} />
+                        {module.contentType === "video" && module.mediaUrl?.includes("youtube.com/embed/") && module.mediaUrl !== "https://www.youtube.com/embed/VIDEO_ID" ? <iframe src={module.mediaUrl} title={`Video ${module.name}`} className="h-full w-full" allowFullScreen /> : module.mediaUrl === "https://www.youtube.com/embed/VIDEO_ID" ? <div className="flex h-full items-center justify-center bg-[#edf3f3] px-3 text-center font-nunito text-xs text-[#719095]">Video YouTube belum dipilih.</div> : <video src={module.contentType === "video" && module.mediaUrl ? module.mediaUrl : ASSETS.eyeVideo} controls preload="metadata" className="h-full w-full object-cover" aria-label={`Video ${module.name}`} />}
                         <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-white/90 px-2 py-1 font-nunito text-[10px] font-extrabold text-[#3aa0a0]"><Video size={11} /> VIDEO</span>
                       </div>
                     </div>
                     <div className="p-4">
                       <p className="font-nunito text-[11px] font-bold uppercase tracking-wider text-[#8aa0a3]">Materi {moduleIndex + 1}</p>
                       <h4 className="mt-1 font-fredoka text-xl font-semibold text-[#2c4f63]">{module.name}</h4>
-                      <p className="mt-1 line-clamp-2 font-nunito text-sm leading-relaxed text-[#719095]">{module.description || "Pelajari materi ini dengan gambar, video, dan karakter interaktif."}</p>
+                      <p className="mt-3 font-nunito text-xs font-extrabold uppercase tracking-wider text-[#3aa0a0]">Penjelasan materi</p>
+                      <p className="mt-1 line-clamp-3 font-nunito text-sm leading-relaxed text-[#719095]">{(module.contentType !== "visual_novel" && module.materialText) || module.description || "Pelajari materi ini dengan gambar, video, dan karakter interaktif."}</p>
                       <button
                         type="button"
                         onClick={() => navigate(`/lesson/${categoryId}/${courseId}?module=${module.id}`)}

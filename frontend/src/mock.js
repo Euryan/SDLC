@@ -6,6 +6,7 @@ import logoImage from "./assets/logo.png";
 import eyeVideo from "./assets/eye.mp4";
 import bgsekolah from "./assets/bgschool.webp";
 import balloonImage from "./assets/soorajh-balloon-9292407.png";
+import papantulis from "./assets/papantulis.jpg";
 
 export const ASSETS = {
   sticker: makasihImage,
@@ -13,6 +14,14 @@ export const ASSETS = {
   eyeVideo,
   balloon: balloonImage,
   bgsekolah,
+  papantulis,
+};
+
+// Free-to-use Unsplash photos for the "Alat Tulis" (writing tools) visual novel quiz.
+const ALAT_TULIS_IMAGES = {
+  pensil: "https://images.unsplash.com/photo-1667687435942-4fdff73a3ed6?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+  penghapus: "https://images.unsplash.com/photo-1667532447990-51c6704ef358?q=80&w=580&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+  pulpen: "https://images.unsplash.com/photo-1585336261022-680e295ce3fe?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
 };
 
 // Learning streak (mock)
@@ -26,7 +35,7 @@ export const HOME_MODULES = [
   { id: "hm-1", title: "Visual", color: "#eb8f8f", desc: "Belajar dengan gambar", categoryId: "visual" },
   { id: "hm-2", title: "Emosi", color: "#f0dd93", desc: "Mengenal perasaan", categoryId: "emosi" },
   { id: "hm-3", title: "Motorik", color: "#8fce9a", desc: "Latihan gerak tubuh", categoryId: "motorik" },
-  { id: "hm-4", title: "Semua Modul", color: "#c9cccf", desc: "Lihat semua kelas", categoryId: null },
+  { id: "hm-4", title: "AI Companion", color: "#9b8fd1", desc: "Tanya AI tentang belajar", categoryId: null, route: "/companion" },
 ];
 
 // Master list of courses (mock)
@@ -67,13 +76,25 @@ export const COURSES = [
     image:
       "https://images.unsplash.com/photo-1588979355313-6711a095465f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwxfHxoYXBweSUyMGZhbWlseXxlbnwwfHx8fDE3ODcwNzA4MzR8MA&ixlib=rb-4.1.0&q=85",
   },
+  { id: "c-emosi", title: "Belajar Mengenal Emosi", image: null },
+  { id: "e-sapa-perasaan", title: "Mengenal Perasaan Sehari-hari", image: null },
+  { id: "e-ekspresi", title: "Mengenal Ekspresi Wajah", image: null },
+  { id: "e-emosi-diri", title: "Memahami Perasaan Diri", image: null },
+  { id: "e-emosi-teman", title: "Memahami Perasaan Teman", image: null },
+  { id: "e-tenang", title: "Latihan Menenangkan Diri", image: null },
+  { id: "c-motorik", title: "Latihan Motorik", image: null },
+  { id: "m-koordinasi", title: "Latihan Koordinasi Tubuh", image: null },
+  { id: "m-gerak-dasar", title: "Gerak Dasar", image: null },
+  { id: "m-keseimbangan", title: "Latihan Keseimbangan", image: null },
+  { id: "m-tangan", title: "Keterampilan Tangan", image: null },
+  { id: "m-aktivitas", title: "Aktivitas Motorik Harian", image: null },
 ];
 
 // Course categories shown on the Course page. Each references courses by id.
 export const COURSE_CATEGORIES = [
-  { id: "visual", title: "Pembelajaran Visual", courseIds: COURSES.map((c) => c.id) },
-  { id: "emosi", title: "Pembelajaran Emosi", courseIds: COURSES.map((c) => c.id) },
-  { id: "motorik", title: "Pembelajaran Motorik", courseIds: COURSES.map((c) => c.id) },
+  { id: "visual", title: "Pembelajaran Visual", courseIds: ["c-alfabet", "c-berhitung", "c-hewan", "c-buah", "c-alattulis", "c-keluarga"] },
+  { id: "emosi", title: "Pembelajaran Emosi", courseIds: ["c-emosi", "e-sapa-perasaan", "e-ekspresi", "e-emosi-diri", "e-emosi-teman", "e-tenang"] },
+  { id: "motorik", title: "Pembelajaran Motorik", courseIds: ["c-motorik", "m-koordinasi", "m-gerak-dasar", "m-keseimbangan", "m-tangan", "m-aktivitas"] },
 ];
 
 export const getCoursesByIds = (ids) =>
@@ -198,6 +219,21 @@ export const CHAPTERS = [
           "Mempraktikkan sapaan pagi dengan kontak mata dan senyuman yang ramah.",
         showBodyEstimation: true,
       },
+      {
+        id: "m-18",
+        name: "Cerita Sapa Teman Baru",
+        stageTitle: "Visual Novel: Sapa Teman Baru",
+        description:
+          "Ikuti percakapan interaktif dan ketuk untuk melanjutkan dialog.",
+        contentType: "visual_novel",
+        materialText: JSON.stringify([
+          { speaker: "Luna", text: "Hai! Namaku Luna. Siapa namamu?", animationId: "greeting" },
+          { speaker: "Luna", text: "Senang sekali bisa berkenalan denganmu hari ini.", animationId: "talking" },
+          { speaker: "[Kamu]", text: "Ayo Sapa Luna dengan melambaikan Tanganmu!", animationId: "greeting", requiresWave: true },
+          { speaker: "Luna", text: "Wah kamu hebat!", animationId: "peace", voiceUrl: "/sound/Wahkamuhebat.wav" },
+          { speaker: "Luna", text: "Yuk, kita coba sapa teman lain dengan senyum dan kontak mata!", animationId: "peace" },
+        ]),
+      },
     ],
   },
   {
@@ -269,6 +305,53 @@ export const CHAPTERS = [
         description:
           "Mengenal gerakan mengangguk sebagai tanda setuju dalam percakapan.",
         showBodyEstimation: true,
+      },
+    ],
+  },
+  {
+    id: "ch-12",
+    title: "Mengenal Alat Tulis",
+    modules: [
+      {
+        id: "m-19",
+        name: "Mengenal Pensil",
+        stageTitle: "Visual Novel: Mengenal Pensil",
+        description: "Ikuti cerita Luna mengenalkan pensil, lalu jawab kuisnya!",
+        contentType: "visual_novel",
+        mediaUrl: ASSETS.papantulis,
+        materialText: JSON.stringify([
+          {
+            speaker: "Luna",
+            text: "Pensil",
+            animationId: "greeting",
+            voiceUrl: "/sound/Pensil.wav",
+            image: ALAT_TULIS_IMAGES.pensil,
+          },
+          {
+            speaker: "Luna",
+            text: "Pensil digunakan untuk menulis dan menggambar. Coretannya bisa dihapus dengan penghapus jika ada yang salah.",
+            animationId: "talking",
+            image: ALAT_TULIS_IMAGES.pensil,
+          },
+          {
+            speaker: "Luna",
+            text: "Sekarang, coba tunjukkan mana gambar Pensil yang tadi kita pelajari!",
+            animationId: "thinking",
+            quiz: {
+              options: [
+                { id: "pensil", label: "Pensil", imageUrl: ALAT_TULIS_IMAGES.pensil, correct: true },
+                { id: "penghapus", label: "Penghapus", imageUrl: ALAT_TULIS_IMAGES.penghapus, correct: false },
+                { id: "pulpen", label: "Pulpen", imageUrl: ALAT_TULIS_IMAGES.pulpen, correct: false },
+              ],
+            },
+          },
+          {
+            speaker: "Luna",
+            text: "Betul sekali, itu Pensil! Kamu hebat mengenali alat tulis.",
+            animationId: "peace",
+            voiceUrl: "/sound/Wahkamuhebat.wav",
+          },
+        ]),
       },
     ],
   },

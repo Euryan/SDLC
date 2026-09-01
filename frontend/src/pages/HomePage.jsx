@@ -1,15 +1,26 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Flame, Check, ArrowRight } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import NewsCard from "../components/NewsCard";
 import NewsModal from "../components/NewsModal";
+import CompanionChatWidget from "../components/CompanionChatWidget";
 import { ASSETS, USER, STREAK, HOME_MODULES, NEWS } from "../mock";
+import { API, authConfig } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
-const DAY_LABELS = ["S", "S", "R", "K", "J", "S", "M"];
+const DAY_LABELS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
-const HeroBanner = () => (
+const getLastSevenDays = (completed = []) =>
+  Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return { done: Boolean(completed[index]), label: DAY_LABELS[date.getDay()] };
+  });
+
+const HeroBanner = ({ streak }) => (
   <div className="relative rounded-3xl bg-gradient-to-br from-[#7fd8d3] to-[#66c7c8] px-6 md:px-8 py-6 overflow-hidden shadow-[0_12px_30px_-14px_rgba(90,180,180,0.9)]">
     <div className="relative z-10 max-w-[62%]">
       <h1 className="font-fredoka font-semibold text-white text-[26px] md:text-[32px] leading-tight drop-shadow-sm">
@@ -28,7 +39,7 @@ const HeroBanner = () => (
           </div>
           <div className="leading-none">
             <div className="font-fredoka font-bold text-[22px] text-[#2c5f66]">
-              {STREAK.days}
+              {streak.days}
             </div>
             <div className="font-nunito text-[11px] text-[#8aa0a3]">
               hari streak
@@ -36,7 +47,7 @@ const HeroBanner = () => (
           </div>
         </div>
         <div className="flex items-center justify-between">
-          {STREAK.week.map((done, i) => (
+          {streak.week.map(({ done, label }, i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <div
                 className={`h-6 w-6 rounded-full flex items-center justify-center transition-all ${
@@ -48,7 +59,7 @@ const HeroBanner = () => (
                 <Check size={14} strokeWidth={3} />
               </div>
               <span className="font-nunito text-[9px] text-[#9fb2b3]">
-                {DAY_LABELS[i]}
+                {label}
               </span>
             </div>
           ))}
@@ -67,8 +78,27 @@ const HeroBanner = () => (
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { token } = useAuth();
   const [activeNews, setActiveNews] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [streak, setStreak] = useState(() => ({
+    ...STREAK,
+    week: getLastSevenDays(STREAK.week),
+  }));
+
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API}/progress`, authConfig(token))
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((progress) => setStreak({
+        days: progress.stats?.streak || 0,
+        week: (progress.weekly || []).slice(-7).map((item) => ({
+          done: item.penyelesaian > 0,
+          label: item.week?.split(" ")[0] || "",
+        })),
+      }))
+      .catch(() => {});
+  }, [token]);
 
   const openNews = (news) => {
     setActiveNews(news);
@@ -80,7 +110,7 @@ const HomePage = () => {
       <Header />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-8">
-        <HeroBanner />
+        <HeroBanner streak={streak} />
 
         {/* Module Pembelajaran */}
         <section>
@@ -101,7 +131,7 @@ const HomePage = () => {
                 <button
                   key={m.id}
                   onClick={() =>
-                    navigate(m.categoryId ? `/course/${m.categoryId}` : "/course")
+                    navigate(m.route || (m.categoryId ? `/course/${m.categoryId}` : "/course"))
                   }
                   className="group relative rounded-2xl h-28 md:h-32 overflow-hidden shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-left"
                   style={{ backgroundColor: m.color }}
@@ -149,6 +179,7 @@ const HomePage = () => {
       <NewsModal news={activeNews} open={modalOpen} onOpenChange={setModalOpen} />
 
       <Footer />
+      <CompanionChatWidget />
     </div>
   );
 };

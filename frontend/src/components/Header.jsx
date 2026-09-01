@@ -170,6 +170,15 @@ const Header = ({ onToggleSidebar }) => {
                     >
                       Progress Anak
                     </button>
+                    <button
+                      onClick={() => {
+                        setMenuOpen(false);
+                        navigate("/companion/settings");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-[#3c6d72] font-nunito hover:bg-[#eafafa] transition-colors"
+                    >
+                      AI Companion
+                    </button>
                     {user.role === "admin" && (
                       <button
                         onClick={() => {

@@ -3,6 +3,9 @@
 # IDE and editors
 .idea/
 .vscode/
+references/
+autisme/
+.gitignore
 
 # Dependencies
 node_modules/
@@ -31,7 +34,9 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
-
+.env
+*.env
+!*.env.example
 *token.json*
 *credentials.json*
 

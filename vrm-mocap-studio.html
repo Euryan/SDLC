@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<title>AutiGaze — VRM Motion Capture Studio</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, sans-serif; background: #14151a; color: #eee;
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  #viewport { flex: 1; position: relative; }
+  #outputCanvas { width: 100%; height: 100%; display: block; }
+  #webcamPreview {
+    position: absolute; bottom: 16px; right: 16px; width: 180px; border-radius: 8px;
+    border: 2px solid #444; transform: scaleX(-1); background: #000;
+  }
+  #panel {
+    width: 300px; padding: 16px; background: #1c1d24; overflow-y: auto;
+    border-left: 1px solid #333; display: flex; flex-direction: column; gap: 14px;
+  }
+  h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #999; margin: 8px 0 4px; }
+  button {
+    background: #2a2c36; color: #eee; border: 1px solid #444; border-radius: 6px;
+    padding: 9px 10px; font-size: 13px; cursor: pointer; width: 100%;
+  }
+  button:hover:not(:disabled) { background: #35374400; border-color: #666; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.active { background: #7a2626; border-color: #c94747; }
+  label { font-size: 12px; color: #bbb; display: block; margin-bottom: 4px; }
+  input[type=range] { width: 100%; }
+  input[type=file] { font-size: 12px; width: 100%; }
+  #status { font-size: 12px; color: #8fd18f; min-height: 32px; line-height: 1.4; }
+  .row { display: flex; gap: 8px; }
+  .row > button { flex: 1; }
+  .val { font-size: 11px; color: #888; text-align: right; }
+  hr { border: none; border-top: 1px solid #333; margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<div id="viewport">
+  <canvas id="outputCanvas"></canvas>
+  <video id="webcamPreview" autoplay playsinline muted></video>
+</div>
+
+<div id="panel">
+  <div>
+    <h1>AutiGaze — VRM Motion Capture Studio</h1>
+    <div style="font-size:11px;color:#888;">Alat produksi internal untuk merekam materi avatar. Tidak untuk diakses anak/pengguna akhir.</div>
+  </div>
+
+  <hr />
+  <h2>1. Model</h2>
+  <label>Muat file .vrm (VRM 1.0 disarankan)</label>
+  <input type="file" id="vrmInput" accept=".vrm" />
+
+  <h2>2. Kamera</h2>
+  <button id="startBtn">Aktifkan kamera & tracking</button>
+
+  <h2>3. Kehalusan gerakan</h2>
+  <label>Smoothing (semakin tinggi = semakin halus, sedikit delay)</label>
+  <input type="range" id="smoothRange" min="0.05" max="0.9" step="0.05" value="0.45" />
+  <div class="val" id="smoothVal">0.45</div>
+
+  <h2>4. Latar belakang</h2>
+  <div class="row">
+    <button id="bgWhiteBtn">Putih</button>
+    <button id="bgGreenBtn">Hijau</button>
+    <button id="bgTransparentBtn">Transparan</button>
+  </div>
+  <div style="font-size:11px;color:#888;">Hijau untuk chroma-key di editor video. Transparan untuk pratinjau saja — rekaman .webm tetap butuh latar solid (lihat catatan status).</div>
+
+  <hr />
+  <h2>5. Rekam</h2>
+  <div class="row">
+    <button id="recVideoBtn" disabled>● Rekam video (.webm)</button>
+  </div>
+  <div class="row">
+    <button id="recDataBtn" disabled>● Rekam gerakan</button>
+  </div>
+  <div class="row">
+    <button id="exportGlbBtn" disabled>Ekspor animasi (.glb)</button>
+    <button id="exportJsonBtn" disabled>Ekspor mentah (.json)</button>
+  </div>
+  <button id="resetPoseBtn" disabled>Reset ke T-pose</button>
+
+  <hr />
+  <div id="status">Muat file VRM, pilih latar belakang, lalu aktifkan kamera untuk mulai.</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.1.1/lib/three-vrm.module.js",
+    "kalidokit": "https://cdn.jsdelivr.net/npm/kalidokit@1.1.4/dist/kalidokit.es.js"
+  }
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import * as Kalidokit from 'kalidokit';
+
+// ---------------------------------------------------------------------------
+// Three.js scene setup
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById('outputCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+dirLight.position.set(0.5, 1.5, 1);
+scene.add(dirLight);
+const gridHelper = new THREE.GridHelper(6, 12, 0x333333, 0x222222);
+scene.add(gridHelper);
+
+function setBackground(mode) {
+  if (mode === 'white') {
+    scene.background = new THREE.Color(0xffffff);
+    gridHelper.visible = false;
+  } else if (mode === 'green') {
+    scene.background = new THREE.Color(0x00ff00); // hijau standar chroma-key
+    gridHelper.visible = false;
+  } else {
+    scene.background = null; // transparan — hanya untuk pratinjau di browser
+    gridHelper.visible = true;
+  }
+}
+setBackground('transparent');
+document.getElementById('bgWhiteBtn').addEventListener('click', () => setBackground('white'));
+document.getElementById('bgGreenBtn').addEventListener('click', () => setBackground('green'));
+document.getElementById('bgTransparentBtn').addEventListener('click', () => setBackground('transparent'));
+
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+camera.position.set(0, 1.4, 2.1);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.2, 0);
+controls.update();
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+let currentVrm = null;
+
+const loader = new GLTFLoader();
+loader.register((parser) => new VRMLoaderPlugin(parser));
+
+document.getElementById('vrmInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  setStatus('Memuat model VRM...');
+  loader.load(
+    url,
+    (gltf) => {
+      const vrm = gltf.userData.vrm;
+      if (currentVrm) scene.remove(currentVrm.scene);
+      VRMUtils.removeUnnecessaryVertices(gltf.scene);
+      vrm.scene.rotation.y = Math.PI; // hadapkan ke kamera
+      scene.add(vrm.scene);
+      currentVrm = vrm;
+      setStatus('Model VRM dimuat. Aktifkan kamera untuk mulai tracking.');
+    },
+    undefined,
+    (err) => setStatus('Gagal memuat VRM: ' + err.message)
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Smoothing helper — slerp rotasi & lerp posisi supaya gerakan tidak patah-patah
+// ---------------------------------------------------------------------------
+let LERP_AMOUNT = parseFloat(document.getElementById('smoothRange').value);
+document.getElementById('smoothRange').addEventListener('input', (e) => {
+  LERP_AMOUNT = parseFloat(e.target.value);
+  document.getElementById('smoothVal').textContent = LERP_AMOUNT.toFixed(2);
+});
+
+function rigRotation(vrm, boneName, rotation = { x: 0, y: 0, z: 0 }, dampener = 1) {
+  const bone = vrm.humanoid?.getNormalizedBoneNode(boneName);
+  if (!bone) return;
+  const euler = new THREE.Euler(rotation.x * dampener, rotation.y * dampener, rotation.z * dampener, 'XYZ');
+  const quaternion = new THREE.Quaternion().setFromEuler(euler);
+  bone.quaternion.slerp(quaternion, LERP_AMOUNT);
+}
+
+function rigPosition(vrm, boneName, position = { x: 0, y: 0, z: 0 }, dampener = 1) {
+  const bone = vrm.humanoid?.getNormalizedBoneNode(boneName);
+  if (!bone) return;
+  const target = new THREE.Vector3(position.x * dampener, position.y * dampener, position.z * dampener);
+  bone.position.lerp(target, LERP_AMOUNT);
+}
+
+function resetToTPose() {
+  if (!currentVrm?.humanoid) return;
+  currentVrm.humanoid.resetNormalizedPose();
+}
+document.getElementById('resetPoseBtn').addEventListener('click', resetToTPose);
+
+// ---------------------------------------------------------------------------
+// MediaPipe Holistic — deteksi wajah, tubuh, dan tangan dari webcam
+// ---------------------------------------------------------------------------
+const videoEl = document.getElementById('webcamPreview');
+let holisticCamera = null;
+let isDataRecording = false;
+let recordedFrames = [];
+let recordingStartTime = 0;
+let recordedBoneNodeMap = {}; // semanticName -> actual scene node (dibutuhkan untuk ekspor .glb)
+const RECORDED_BONE_NAMES = [
+  'hips', 'spine', 'chest', 'neck', 'head',
+  'leftUpperArm', 'leftLowerArm', 'leftHand',
+  'rightUpperArm', 'rightLowerArm', 'rightHand',
+];
+
+const holistic = new Holistic({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+});
+holistic.setOptions({
+  selfieMode: true, // kamera bertindak seperti cermin, memudahkan orientasi saat memperagakan
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  refineFaceLandmarks: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6,
+});
+holistic.onResults(onHolisticResults);
+
+function onHolisticResults(results) {
+  if (!currentVrm) return;
+
+  const faceLandmarks = results.faceLandmarks;
+  const poseLandmarks3D = results.poseWorldLandmarks; // world landmarks (fallback below jika tidak tersedia)
+  const poseLandmarks = results.poseLandmarks;
+  const leftHandLandmarks = results.rightHandLandmarks; // tertukar krn selfieMode, lihat catatan di bawah
+  const rightHandLandmarks = results.leftHandLandmarks;
+
+  // --- Wajah (ekspresi & rotasi kepala) ---
+  if (faceLandmarks) {
+    const face = Kalidokit.Face.solve(faceLandmarks, {
+      runtime: 'mediapipe',
+      video: videoEl,
+    });
+    if (face) {
+      rigRotation(currentVrm, 'neck', face.head, 0.7);
+      rigRotation(currentVrm, 'head', face.head, 0.3);
+
+      if (currentVrm.expressionManager) {
+        currentVrm.expressionManager.setValue('blinkLeft', face.eye.l);
+        currentVrm.expressionManager.setValue('blinkRight', face.eye.r);
+        currentVrm.expressionManager.setValue('aa', face.mouth.shape.A);
+        currentVrm.expressionManager.setValue('ih', face.mouth.shape.I);
+        currentVrm.expressionManager.setValue('ou', face.mouth.shape.U);
+        currentVrm.expressionManager.setValue('ee', face.mouth.shape.E);
+        currentVrm.expressionManager.setValue('oh', face.mouth.shape.O);
+      }
+    }
+  }
+
+  // --- Tubuh (badan, lengan) ---
+  if (poseLandmarks) {
+    const pose = Kalidokit.Pose.solve(poseLandmarks3D || poseLandmarks, poseLandmarks, {
+      runtime: 'mediapipe',
+      video: videoEl,
+    });
+    if (pose) {
+      rigRotation(currentVrm, 'hips', pose.Hips.rotation, 0.7);
+      rigPosition(currentVrm, 'hips', pose.Hips.position, 1);
+      rigRotation(currentVrm, 'chest', pose.Spine, 0.25);
+      rigRotation(currentVrm, 'spine', pose.Spine, 0.45);
+
+      rigRotation(currentVrm, 'rightUpperArm', pose.RightUpperArm);
+      rigRotation(currentVrm, 'rightLowerArm', pose.RightLowerArm);
+      rigRotation(currentVrm, 'leftUpperArm', pose.LeftUpperArm);
+      rigRotation(currentVrm, 'leftLowerArm', pose.LeftLowerArm);
+
+      rigRotation(currentVrm, 'rightUpperLeg', pose.RightUpperLeg);
+      rigRotation(currentVrm, 'rightLowerLeg', pose.RightLowerLeg);
+      rigRotation(currentVrm, 'leftUpperLeg', pose.LeftUpperLeg);
+      rigRotation(currentVrm, 'leftLowerLeg', pose.LeftLowerLeg);
+    }
+  }
+
+  // --- Tangan kanan ---
+  if (rightHandLandmarks) {
+    const rightHand = Kalidokit.Hand.solve(rightHandLandmarks, 'Right');
+    if (rightHand) {
+      rigRotation(currentVrm, 'rightHand', {
+        z: rightHand.RightWrist.z,
+        y: rightHand.RightWrist.y,
+        x: rightHand.RightWrist.x,
+      });
+      rigRotation(currentVrm, 'rightThumbProximal', rightHand.RightThumbProximal);
+      rigRotation(currentVrm, 'rightThumbIntermediate', rightHand.RightThumbIntermediate);
+      rigRotation(currentVrm, 'rightIndexProximal', rightHand.RightIndexProximal);
+      rigRotation(currentVrm, 'rightIndexIntermediate', rightHand.RightIndexIntermediate);
+      rigRotation(currentVrm, 'rightMiddleProximal', rightHand.RightMiddleProximal);
+      rigRotation(currentVrm, 'rightRingProximal', rightHand.RightRingProximal);
+      rigRotation(currentVrm, 'rightLittleProximal', rightHand.RightLittleProximal);
+    }
+  }
+
+  // --- Tangan kiri ---
+  if (leftHandLandmarks) {
+    const leftHand = Kalidokit.Hand.solve(leftHandLandmarks, 'Left');
+    if (leftHand) {
+      rigRotation(currentVrm, 'leftHand', {
+        z: leftHand.LeftWrist.z,
+        y: leftHand.LeftWrist.y,
+        x: leftHand.LeftWrist.x,
+      });
+      rigRotation(currentVrm, 'leftThumbProximal', leftHand.LeftThumbProximal);
+      rigRotation(currentVrm, 'leftThumbIntermediate', leftHand.LeftThumbIntermediate);
+      rigRotation(currentVrm, 'leftIndexProximal', leftHand.LeftIndexProximal);
+      rigRotation(currentVrm, 'leftIndexIntermediate', leftHand.LeftIndexIntermediate);
+      rigRotation(currentVrm, 'leftMiddleProximal', leftHand.LeftMiddleProximal);
+      rigRotation(currentVrm, 'leftRingProximal', leftHand.LeftRingProximal);
+      rigRotation(currentVrm, 'leftLittleProximal', leftHand.LeftLittleProximal);
+    }
+  }
+
+  // --- Simpan frame kalau sedang merekam data gerakan ---
+  if (isDataRecording && currentVrm.humanoid) {
+    const bones = {};
+    for (const name of RECORDED_BONE_NAMES) {
+      const b = currentVrm.humanoid.getNormalizedBoneNode(name);
+      if (b) {
+        bones[name] = {
+          rotation: { x: b.quaternion.x, y: b.quaternion.y, z: b.quaternion.z, w: b.quaternion.w },
+          position: { x: b.position.x, y: b.position.y, z: b.position.z },
+        };
+      }
+    }
+    recordedFrames.push({ t: performance.now() - recordingStartTime, bones });
+  }
+}
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  setStatus('Meminta akses kamera...');
+  try {
+    holisticCamera = new Camera(videoEl, {
+      onFrame: async () => { await holistic.send({ image: videoEl }); },
+      width: 640,
+      height: 480,
+    });
+    await holisticCamera.start();
+    document.getElementById('recVideoBtn').disabled = false;
+    document.getElementById('recDataBtn').disabled = false;
+    document.getElementById('resetPoseBtn').disabled = false;
+    document.getElementById('startBtn').disabled = true;
+    setStatus('Kamera aktif. Tracking berjalan — coba gerakkan badan untuk uji coba.');
+  } catch (err) {
+    setStatus('Gagal mengakses kamera: ' + err.message);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rekam video (.webm) — merekam langsung dari kanvas 3D, tidak perlu OBS
+// ---------------------------------------------------------------------------
+let mediaRecorder = null;
+let videoChunks = [];
+const recVideoBtn = document.getElementById('recVideoBtn');
+
+recVideoBtn.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  const stream = canvas.captureStream(30);
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+  videoChunks = [];
+  mediaRecorder.ondataavailable = (e) => videoChunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(videoChunks, { type: 'video/webm' });
+    downloadBlob(blob, `autigaze-materi-${Date.now()}.webm`);
+    recVideoBtn.textContent = '● Rekam video (.webm)';
+    recVideoBtn.classList.remove('active');
+    setStatus('Video tersimpan & diunduh.');
+  };
+  mediaRecorder.start();
+  recVideoBtn.textContent = '■ Berhenti merekam video';
+  recVideoBtn.classList.add('active');
+  setStatus('Merekam video...');
+});
+
+// ---------------------------------------------------------------------------
+// Rekam data gerakan (.json) — untuk dipakai ulang sebagai animation clip
+// ---------------------------------------------------------------------------
+const recDataBtn = document.getElementById('recDataBtn');
+const exportGlbBtn = document.getElementById('exportGlbBtn');
+const exportJsonBtn = document.getElementById('exportJsonBtn');
+
+recDataBtn.addEventListener('click', () => {
+  if (isDataRecording) {
+    isDataRecording = false;
+    recDataBtn.textContent = '● Rekam gerakan';
+    recDataBtn.classList.remove('active');
+    if (currentVrm?.humanoid) {
+      recordedBoneNodeMap = {};
+      for (const name of RECORDED_BONE_NAMES) {
+        const b = currentVrm.humanoid.getNormalizedBoneNode(name);
+        if (b) recordedBoneNodeMap[name] = b;
+      }
+    }
+    exportGlbBtn.disabled = recordedFrames.length === 0;
+    exportJsonBtn.disabled = recordedFrames.length === 0;
+    setStatus(`${recordedFrames.length} frame terekam. Siap diekspor.`);
+  } else {
+    recordedFrames = [];
+    recordingStartTime = performance.now();
+    isDataRecording = true;
+    exportGlbBtn.disabled = true;
+    exportJsonBtn.disabled = true;
+    recDataBtn.textContent = '■ Berhenti merekam gerakan';
+    recDataBtn.classList.add('active');
+    setStatus('Merekam data gerakan...');
+  }
+});
+
+// --- Ekspor mentah (.json) — fallback ringan, bisa dipakai bahasa/tools lain ---
+exportJsonBtn.addEventListener('click', () => {
+  const payload = { fps: 'variable', frameCount: recordedFrames.length, frames: recordedFrames };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  downloadBlob(blob, `autigaze-motion-${Date.now()}.json`);
+  setStatus('Data mentah (.json) diunduh.');
+});
+
+// ---------------------------------------------------------------------------
+// Ekspor .glb — glTF binary berisi AnimationClip, langsung bisa dimuat lewat
+// GLTFLoader + THREE.AnimationMixer di aplikasi utama (modul praktik).
+//
+// Catatan jujur: format .vrma (VRM Animation) dan .fbx TIDAK bisa diekspor
+// secara reliable langsung dari browser — tidak ada exporter FBX resmi di
+// three.js, dan .vrma butuh implementasi ekstensi VRMC_vrm_animation penuh.
+// .glb ini secara fungsional setara (berisi animasi tulang humanoid yang
+// sama) dan justru format paling native untuk stack React + three-vrm kamu,
+// jadi tidak perlu konversi tambahan sebelum dipakai di aplikasi.
+// ---------------------------------------------------------------------------
+exportGlbBtn.addEventListener('click', () => {
+  if (!currentVrm || recordedFrames.length === 0) return;
+  setStatus('Menyusun animasi...');
+
+  const tracks = [];
+  for (const name of RECORDED_BONE_NAMES) {
+    const node = recordedBoneNodeMap[name];
+    if (!node) continue;
+    const times = [];
+    const rotationValues = [];
+    const positionValues = [];
+    for (const frame of recordedFrames) {
+      const bone = frame.bones[name];
+      if (!bone) continue;
+      times.push(frame.t / 1000);
+      rotationValues.push(bone.rotation.x, bone.rotation.y, bone.rotation.z, bone.rotation.w);
+      positionValues.push(bone.position.x, bone.position.y, bone.position.z);
+    }
+    if (times.length > 1) {
+      tracks.push(new THREE.QuaternionKeyframeTrack(`${node.name}.quaternion`, times, rotationValues));
+      if (name === 'hips') {
+        tracks.push(new THREE.VectorKeyframeTrack(`${node.name}.position`, times, positionValues));
+      }
+    }
+  }
+
+  if (tracks.length === 0) {
+    setStatus('Gagal: tidak ada track animasi yang valid untuk diekspor.');
+    return;
+  }
+
+  const clip = new THREE.AnimationClip('AutiGazeMotion', -1, tracks);
+  const exporter = new GLTFExporter();
+  exporter.parse(
+    currentVrm.scene,
+    (result) => {
+      const blob = new Blob([result], { type: 'application/octet-stream' });
+      downloadBlob(blob, `autigaze-motion-${Date.now()}.glb`);
+      setStatus('Animasi (.glb) diunduh — siap dimuat via GLTFLoader + AnimationMixer.');
+    },
+    (err) => setStatus('Gagal ekspor .glb: ' + err.message),
+    { binary: true, animations: [clip] }
+  );
+});
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// ---------------------------------------------------------------------------
+// Render loop
+// ---------------------------------------------------------------------------
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if (currentVrm) currentVrm.update(delta);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

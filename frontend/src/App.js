@@ -7,6 +7,8 @@ import CoursePage from "./pages/CoursePage";
 import CategoryPage from "./pages/CategoryPage";
 import ModulePage from "./pages/ModulePage";
 import LessonPage from "./pages/LessonPage";
+import AICompanionPage from "./pages/AICompanionPage";
+import AICompanionSettingsPage from "./pages/AICompanionSettingsPage";
 import BeritaPage from "./pages/BeritaPage";
 import ProgressPage from "./pages/ProgressPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -29,6 +31,8 @@ function App() {
               <Route path="/lesson" element={<LessonPage />} />
               <Route path="/lesson/:categoryId" element={<LessonPage />} />
               <Route path="/lesson/:categoryId/:courseId" element={<LessonPage />} />
+              <Route path="/companion" element={<AICompanionPage />} />
+              <Route path="/companion/settings" element={<AICompanionSettingsPage />} />
               <Route path="/berita" element={<BeritaPage />} />
               <Route path="/progress" element={<ProgressPage />} />
               <Route path="/profile" element={<ProfilePage />} />

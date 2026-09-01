@@ -1,17 +1,24 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Pause, Play, SkipForward, Video } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Pause, Play, SkipForward } from "lucide-react";
 import { ASSETS } from "../mock";
 import VrmCharacter from "./VrmCharacter";
 import MediaPipeBodyEstimation from "./MediaPipeBodyEstimation";
+import VisualNovelStage from "./VisualNovelStage";
 import { MOTORIK_ANIMATIONS } from "../animations/motorikAnimations";
 import haloSound from "../sound/Halo.wav";
+import dontTurnSound from "../sound/ehjanganberpaling.wav";
+import lookHereSound from "../sound/hayoliatkemana.wav";
+import { API, authConfig } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
-const CourseStage = ({ module }) => {
+const CourseStage = ({ module, nextModule, onNext }) => {
   const [animationIndex, setAnimationIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [waveTrigger, setWaveTrigger] = useState(0);
+  const { token } = useAuth();
   const haloAudioRef = useRef(null);
   const haloDelayRef = useRef(null);
+  const focusSoundDelayRef = useRef(null);
   const activeAnimation = MOTORIK_ANIMATIONS[animationIndex];
 
   useEffect(() => {
@@ -22,6 +29,7 @@ const CourseStage = ({ module }) => {
     haloAudioRef.current = audio;
     return () => {
       if (haloDelayRef.current) clearTimeout(haloDelayRef.current);
+      if (focusSoundDelayRef.current) clearTimeout(focusSoundDelayRef.current);
       audio.pause();
       haloAudioRef.current = null;
     };
@@ -47,9 +55,49 @@ const CourseStage = ({ module }) => {
     setWaveTrigger((current) => current + 1);
   };
 
+  const handleFocusLost = () => {
+    const reminderIndex = MOTORIK_ANIMATIONS.findIndex((animation) => animation.id === "vrma-02");
+    if (reminderIndex >= 0) setAnimationIndex(reminderIndex);
+    setIsPlaying(true);
+    const reminderSound = Math.random() < 0.5 ? dontTurnSound : lookHereSound;
+    if (focusSoundDelayRef.current) clearTimeout(focusSoundDelayRef.current);
+    focusSoundDelayRef.current = setTimeout(() => {
+      const audio = new Audio(reminderSound);
+      audio.play().catch(() => {});
+      focusSoundDelayRef.current = null;
+    }, 1000);
+    if (token) {
+      fetch(`${API}/lessons/${module.id}/focus-events`, {
+        ...authConfig(token),
+        method: "POST",
+        headers: { ...authConfig(token).headers, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    }
+  };
+
+  const handleFocusDetected = () => {
+    if (focusSoundDelayRef.current) {
+      clearTimeout(focusSoundDelayRef.current);
+      focusSoundDelayRef.current = null;
+    }
+  };
+
   const contentType = module.contentType || "vrm";
   const isVrm = contentType === "vrm";
+  const isVisualNovel = contentType === "visual_novel";
   const isMedia = contentType === "image" || contentType === "video";
+  const isYoutube = contentType === "video" && module.mediaUrl?.includes("youtube.com/embed/");
+
+  const narrative = useMemo(() => {
+    if (!isVisualNovel || !module.materialText) return null;
+    try {
+      const parsed = JSON.parse(module.materialText);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [isVisualNovel, module.materialText]);
 
   return (
     <section className="flex-1 min-w-0 px-6 pb-8">
@@ -60,19 +108,41 @@ const CourseStage = ({ module }) => {
       <div className="relative rounded-2xl overflow-hidden bg-white p-2 shadow-[0_10px_30px_-12px_rgba(80,140,150,0.5)]">
         <div
           key={module.id}
-          className={`relative rounded-xl overflow-hidden aspect-[16/10] animate-stageIn ${isVrm ? "" : "bg-[#edf8f7]"}`}
+          className={`relative rounded-xl overflow-hidden aspect-[16/10] animate-stageIn ${isVrm || isVisualNovel ? "" : "bg-[#edf8f7]"}`}
         >
           {isVrm && <img src={ASSETS.bgsekolah} alt="Latar sekolah" className="absolute inset-0 w-full h-full object-cover" />}
+
+          {isVisualNovel && (
+            <VisualNovelStage
+              narrative={narrative}
+              background={module.mediaUrl || ASSETS.bgsekolah}
+              characterName={module.name}
+            />
+          )}
 
           {isMedia && module.mediaUrl && contentType === "image" && (
             <img src={module.mediaUrl} alt={module.name} className="h-full w-full object-contain" />
           )}
-          {isMedia && module.mediaUrl && contentType === "video" && (
+          {isMedia && module.mediaUrl && contentType === "video" && isYoutube && module.mediaUrl !== "https://www.youtube.com/embed/VIDEO_ID" && (
+            <iframe
+              src={module.mediaUrl}
+              title={`Video ${module.name}`}
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          )}
+          {isMedia && module.mediaUrl && contentType === "video" && !isYoutube && (
             <video src={module.mediaUrl} controls className="h-full w-full object-contain" aria-label={`Video ${module.name}`} />
           )}
           {!isVrm && !module.mediaUrl && (
             <div className="flex h-full items-center justify-center px-6 text-center font-nunito text-sm text-[#719095]">
               Media materi belum tersedia.
+            </div>
+          )}
+          {isYoutube && module.mediaUrl === "https://www.youtube.com/embed/VIDEO_ID" && (
+            <div className="flex h-full items-center justify-center px-6 text-center font-nunito text-sm text-[#719095]">
+              Video YouTube belum dipilih.
             </div>
           )}
           {contentType === "article" && (
@@ -85,7 +155,7 @@ const CourseStage = ({ module }) => {
 
           {isVrm && module.showBodyEstimation && (
             <div className="absolute top-4 right-4 z-20 h-28 w-32 md:h-36 md:w-44 rounded-xl bg-white/95 shadow-lg ring-1 ring-[#cfeeee] p-1.5 animate-floaty">
-              <MediaPipeBodyEstimation onWave={handleWave} />
+              <MediaPipeBodyEstimation onWave={handleWave} onFocusLost={handleFocusLost} onFocusDetected={handleFocusDetected} />
             </div>
           )}
           {isVrm && <div className="absolute top-[22%] left-[52%] md:left-[56%] z-20 animate-popIn"><span className="font-caveat font-bold text-[#1f2a2e] text-[34px] md:text-[52px] drop-shadow-sm">{module.speech}</span></div>}
@@ -118,31 +188,16 @@ const CourseStage = ({ module }) => {
         {module.description}
       </p>
 
-      <div className="mt-5 grid gap-4 rounded-2xl bg-white p-4 shadow-[0_10px_30px_-18px_rgba(80,140,150,0.7)] md:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)] md:p-5">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#eafafa] text-[#3aa0a0]">
-              <Video size={17} />
-            </div>
-            <h2 className="font-nunito text-base font-extrabold text-[#2c4f63]">Penjelasan materi</h2>
-          </div>
-          <p className="font-nunito text-sm leading-relaxed text-[#4c6a70]">
-            {module.materialText || module.description || "Ikuti contoh dari karakter, lalu praktikkan langkahnya secara perlahan."}
-          </p>
-          <p className="mt-3 font-nunito text-xs leading-relaxed text-[#8aa0a3]">
-            {isVrm ? "Amati gerakan karakter pada stage, tonton video, kemudian coba ulangi dengan nyaman." : "Baca materi atau amati media di atas dengan nyaman."}
-          </p>
-        </div>
-        <div className="overflow-hidden rounded-xl bg-[#edf8f7] p-1">
-          <video
-            src={ASSETS.eyeVideo}
-            controls
-            preload="metadata"
-            className="aspect-video w-full rounded-lg object-cover"
-            aria-label={`Video penjelasan ${module.name}`}
-          />
-        </div>
+      <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onNext}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#6fcccb] px-4 py-2.5 font-nunito text-sm font-extrabold text-white shadow-sm transition hover:bg-[#4eb8b7]"
+          >
+            {nextModule ? `Berikutnya: ${nextModule.name}` : "Selesaikan materi"} <ArrowRight size={16} />
+          </button>
       </div>
+
     </section>
   );
 };

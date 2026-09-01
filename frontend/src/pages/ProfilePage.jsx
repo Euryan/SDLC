@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   User,
   Cake,
   Droplet,
-  Stethoscope,
   School,
   GraduationCap,
   HeartPulse,
@@ -20,6 +19,7 @@ import Footer from "../components/Footer";
 import ChildAvatar from "../components/ChildAvatar";
 import { useChild } from "../context/ChildContext";
 import { useAuth } from "../context/AuthContext";
+import { API, authConfig } from "../lib/api";
 import {
   Dialog,
   DialogContent,
@@ -62,7 +62,6 @@ const EDIT_FIELDS = [
   { key: "bloodType", label: "Golongan Darah" },
   { key: "diagnosis", label: "Diagnosa" },
   { key: "diagnosisDate", label: "Waktu Diagnosa" },
-  { key: "therapist", label: "Terapis" },
   { key: "school", label: "Sekolah" },
   { key: "grade", label: "Kelas" },
   { key: "parentName", label: "Nama Orang Tua" },
@@ -145,8 +144,16 @@ const EditProfileModal = ({ open, onOpenChange, child, onSave }) => {
 const ProfilePage = () => {
   const { child, updateChild } = useChild();
   const { user, saveChildData } = useAuth();
+  const [screeningSummary, setScreeningSummary] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetch(`${API}/screening/summary`, authConfig(localStorage.getItem("autigaze_token")))
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then(setScreeningSummary)
+      .catch(() => {});
+  }, [user?.autismTest]);
 
   const handleSave = async (payload) => {
     try {
@@ -195,7 +202,6 @@ const ProfilePage = () => {
         <Card title="Data Kesehatan & Terapi">
           <Field icon={HeartPulse} label="Diagnosa" value={child.diagnosis} />
           <Field icon={CalendarDays} label="Waktu Diagnosa" value={child.diagnosisDate} />
-          <Field icon={Stethoscope} label="Terapis" value={child.therapist} />
           <Field
             icon={Heart}
             label="Hobi"
@@ -203,18 +209,19 @@ const ProfilePage = () => {
           />
         </Card>
 
-        {user?.autismTest?.done && (
+        {(screeningSummary || user?.autismTest?.done) && (
           <Card title="Hasil Screening Terakhir">
             <Field
               icon={HeartPulse}
               label="Metode"
-              value={user.autismTest.method === "gaze" ? "Gaze Detection" : "M-CHAT"}
+              value={screeningSummary?.results ? "Gaze + M-CHAT" : user.autismTest.method === "gaze" ? "Gaze Detection" : "M-CHAT"}
             />
             <Field
-              icon={Stethoscope}
+              icon={HeartPulse}
               label="Hasil"
-              value={user.autismTest.result || user.autismTest.diagnosis || "-"}
+              value={`${screeningSummary?.level || user.autismTest.level || "Level 1"} (Confidence ${screeningSummary?.confidence || user.autismTest.confidence || "-"}%)`}
             />
+            <Field icon={HeartPulse} label="Catatan" value={screeningSummary?.message || "Membutuhkan analisis lanjutan"} />
           </Card>
         )}
 
